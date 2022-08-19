@@ -1,0 +1,32 @@
+{
+    "compilerOptions": {
+        "noStrictGenericChecks": true,
+        "keyofStringsOnly": true,
+        "module": "commonjs",
+        "lib": ["ES2020", "DOM"],
+        "target": "ES2020",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "noImplicitAny": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "allowJs": true,
+        "resolveJsonModule": true,
+        "emitDeclarationOnly": false,
+        "sourceMap": true,
+        "declaration": true,
+        "removeComments": true,
+        "outDir": "build",
+        "baseUrl": ".",
+        "rootDir": "./src",
+        "typeRoots": ["./node_modules/@types"],
+        "project": "tsconfig.json"  
+    },
+    "include": [
+        "src"
+    ],
+    "exclude": [
+        "node_modules", "build"
+    ]
+}

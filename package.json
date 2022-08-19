@@ -1,0 +1,27 @@
+{
+  "name": "gkm",
+  "version": "0.1.0",
+  "description": "Gamepad Keyboard Mouse package",
+  "main": "build/index.js",
+  "scripts": {
+    "prepack": "tsc --project=tsconfig.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourconst/gkm.git"
+  },
+  "keywords": [
+    "gamepad",
+    "keyboard",
+    "mouse"
+  ],
+  "author": "yourconst",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/yourconst/gkm/issues"
+  },
+  "homepage": "https://github.com/yourconst/gkm#readme",
+  "dependencies": {
+    "typescript": "^4.7.4"
+  }
+}
