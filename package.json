@@ -4,7 +4,7 @@
   "description": "Gamepad Keyboard Mouse package",
   "main": "build/index.js",
   "scripts": {
-    "prepack": "tsc --project=tsconfig.json"
+    "prepack": "tsc --project tsconfig.json"
   },
   "repository": {
     "type": "git",
@@ -21,7 +21,10 @@
     "url": "https://github.com/yourconst/gkm/issues"
   },
   "homepage": "https://github.com/yourconst/gkm#readme",
-  "dependencies": {
+  "devDependencies": {
     "typescript": "^4.7.4"
+  },
+  "dependencies": {
+    "eventemitter3": "^4.0.7"
   }
 }
