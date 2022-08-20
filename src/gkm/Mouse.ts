@@ -1,9 +1,9 @@
 import { Store } from "../helpers/Store";
 
 export enum MouseButtons {
-    Left = 'Left',
-    Middle = 'Middle',
-    Right = 'Right',
+    MOUSE_LEFT = 'MOUSE_LEFT',
+    MOUSE_MIDDLE = 'MOUSE_MIDDLE',
+    MOUSE_RIGHT = 'MOUSE_RIGHT',
 }
 
 export enum MouseAxes {
@@ -26,7 +26,7 @@ export class Mouse {
     readonly buttons = MouseButtons;
     readonly axes = MouseAxes;
 
-    readonly store = new Store<MouseButtons, MouseAxes>();
+    readonly store = new Store<MouseButtons, MouseAxes, Mouse>();
 
     constructor(protected target: HTMLElement = document.body, public needPreventDefault = false) {
         target.addEventListener('mousemove', (event) => {
@@ -35,7 +35,7 @@ export class Mouse {
             }
 
             for (const axis of Object.values(MouseAxes)) {
-                this.store.updateAxis(axis, event[axis]);
+                this.store.updateAxis(axis, event[axis], this);
             }
         });
 
@@ -45,13 +45,13 @@ export class Mouse {
             }
 
             if (event.button === 0) {
-                this.store.keydown(MouseButtons.Left);
+                this.store.keydown(MouseButtons.MOUSE_LEFT, this);
             } else
             if (event.button === 1) {
-                this.store.keydown(MouseButtons.Middle);
+                this.store.keydown(MouseButtons.MOUSE_MIDDLE, this);
             } else
             if (event.button === 2) {
-                this.store.keydown(MouseButtons.Right);
+                this.store.keydown(MouseButtons.MOUSE_RIGHT, this);
             }
         });
 
@@ -61,18 +61,23 @@ export class Mouse {
             }
 
             if (event.button === 0) {
-                this.store.keyup(MouseButtons.Left);
+                this.store.keyup(MouseButtons.MOUSE_LEFT, this);
             } else
             if (event.button === 1) {
-                this.store.keyup(MouseButtons.Middle);
+                this.store.keyup(MouseButtons.MOUSE_MIDDLE, this);
             } else
             if (event.button === 2) {
-                this.store.keyup(MouseButtons.Right);
+                this.store.keyup(MouseButtons.MOUSE_RIGHT, this);
             }
         });
 
+        // TODO
         target.addEventListener('focusout', () => {
             this.store.clear();
         });
+    }
+
+    get name() {
+        return 'Mouse';
     }
 }

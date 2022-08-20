@@ -2,9 +2,14 @@ import EventEmitter from "eventemitter3";
 import { Gamepad, GamepadAxes, GamepadButtons, GamepadVibrateOptions } from "./gkm/Gamepad";
 import { Keyboard, KeyboardButtons } from "./gkm/Keyboard";
 import { Mouse, MouseAxes, MouseButtons } from "./gkm/Mouse";
-import { Store } from "./helpers/Store";
+import { Store, StoreEvents } from "./helpers/Store";
 
-enum GKMEvents {
+export { Gamepad, GamepadAxes, GamepadButtons, GamepadVibrateOptions } from "./gkm/Gamepad";
+export { Keyboard, KeyboardButtons } from "./gkm/Keyboard";
+export { Mouse, MouseAxes, MouseButtons } from "./gkm/Mouse";
+export { Store, StoreEvents } from "./helpers/Store";
+
+export enum GKMEvents {
     gamepadconnected = 'gamepadconnected',
     gamepadreconnected = 'gamepadreconnected',
     gamepaddisconnected = 'gamepaddisconnected',
@@ -15,9 +20,14 @@ export class GKM<CustomKeys extends string = null, CustomAxes extends string = n
     [GKMEvents.gamepaddisconnected]: (gamepad: Gamepad) => void,
     [GKMEvents.gamepadreconnected]: (gamepad: Gamepad) => void,
 }> {
+    static readonly events = GKMEvents;
+
+    readonly events = GKMEvents;
+
     readonly store = new Store<
         CustomKeys | GamepadButtons |KeyboardButtons | MouseButtons,
-        CustomAxes | GamepadAxes | MouseAxes
+        CustomAxes | GamepadAxes | MouseAxes,
+        Gamepad | Keyboard | Mouse
     >();
     
     readonly mouse: Mouse;
@@ -26,22 +36,28 @@ export class GKM<CustomKeys extends string = null, CustomAxes extends string = n
 
     readonly usedGamepadsIndexes = new Set<number>();
 
-    constructor(private target: HTMLElement = document.body, private needPreventDefault = false) {
+    private gamepadsUpdateIntervalEntity: number;
+
+    constructor(
+        private target: HTMLElement = document.body,
+        private needPreventDefault = false,
+        private gamepadsUpdateInterval = 8,
+    ) {
         super();
         
-        this.mouse = new Mouse(target, needPreventDefault);
-        this.keyboard = new Keyboard(target, needPreventDefault);
+        this.mouse = new Mouse(this.target, this.needPreventDefault);
+        this.keyboard = new Keyboard(this.target, this.needPreventDefault);
 
-        this.mouse.store.addListener(Store.events.keyvaluechange, (key, value) => {
-            this.store.updateKey(key, value);
+        this.mouse.store.addListener(Store.events.keyvaluechange, (key, value, source) => {
+            this.store.updateKey(key, value, source);
         });
 
-        this.mouse.store.addListener(Store.events.axismove, (key, value) => {
-            this.store.updateAxis(key, value);
+        this.mouse.store.addListener(Store.events.axismove, (key, value, source) => {
+            this.store.updateAxis(key, value, source);
         });
 
-        this.keyboard.store.addListener(Store.events.keyvaluechange, (key, value) => {
-            this.store.updateKey(key, value);
+        this.keyboard.store.addListener(Store.events.keyvaluechange, (key, value, source) => {
+            this.store.updateKey(key, value, source);
         });
 
         Gamepad.addListener(Gamepad.events.connected, () => {
@@ -49,6 +65,8 @@ export class GKM<CustomKeys extends string = null, CustomAxes extends string = n
         });
 
         this.checkGamepads();
+
+        this.gamepadsUpdateIntervalEntity = setInterval(this.updateGamepads, this.gamepadsUpdateInterval);
     }
 
     tryAddGamepad(index: number) {
@@ -56,29 +74,31 @@ export class GKM<CustomKeys extends string = null, CustomAxes extends string = n
             return;
         }
 
-        const gamepad = new Gamepad({
+        const gamepad = new Gamepad(this.target, {
             index,
             usedGamepadsIndexes: this.usedGamepadsIndexes,
             autoUpdate: false,
         });
 
         gamepad.addListener(gamepad.events.connected, gp => {
-            this.emit(GKMEvents.gamepadconnected, gp);
+            this.emit(GKMEvents.gamepadreconnected, gp);
         });
 
         gamepad.addListener(gamepad.events.disconnected, gp => {
             this.emit(GKMEvents.gamepaddisconnected, gp);
         });
 
-        gamepad.store.addListener(Store.events.keyvaluechange, (key, value) => {
-            this.store.updateKey(key, value);
+        gamepad.store.addListener(Store.events.keyvaluechange, (key, value, source) => {
+            this.store.updateKey(key, value, source);
         });
 
-        gamepad.store.addListener(Store.events.axismove, (key, value) => {
-            this.store.updateAxis(key, value);
+        gamepad.store.addListener(Store.events.axismove, (key, value, source) => {
+            this.store.updateAxis(key, value, source);
         });
 
         this.gamepads.set(index, gamepad);
+
+        this.emit(GKMEvents.gamepadconnected, gamepad);
     }
 
     checkGamepads() {
@@ -88,6 +108,12 @@ export class GKM<CustomKeys extends string = null, CustomAxes extends string = n
             this.tryAddGamepad(llgp.index);
         }
     }
+
+    private readonly updateGamepads = () => {
+        for (const gamepad of this.gamepads.values()) {
+            gamepad.update();
+        }
+    };
 
 
     async vibrate(options: GamepadVibrateOptions) {

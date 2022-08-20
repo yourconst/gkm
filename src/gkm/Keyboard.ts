@@ -15,24 +15,29 @@ export type KeyboardButtons =
     ;
 
 export class Keyboard {
-    readonly store = new Store<KeyboardButtons>();
+    readonly store = new Store<KeyboardButtons, null, Keyboard>();
 
     constructor(protected target: HTMLElement = document.body, public needPreventDefault = false) {
         target.addEventListener('keydown', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
-            this.store.keydown(<KeyboardButtons> event.code);
+            this.store.keydown(<KeyboardButtons> event.code, this);
         });
         target.addEventListener('keyup', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
-            this.store.keyup(<KeyboardButtons> event.code);
+            this.store.keyup(<KeyboardButtons> event.code, this);
         });
 
+        // TODO
         target.addEventListener('focusout', () => {
             this.store.clear();
         });
+    }
+
+    get name() {
+        return 'Keyboard';
     }
 }

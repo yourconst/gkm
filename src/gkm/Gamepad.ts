@@ -46,8 +46,27 @@ export enum GamepadEvents {
     disconnected = 'disconnected',
 }
 
-export type GamepadButtons = `BUTTON_${number}`;
-export type GamepadAxes = `AXIS_${number}`;
+
+export type GamepadMappedButtons = 
+    'A'|'X'|'Y'|'B' |
+    'DOWN'|'LEFT'|'UP'|'RIGHT' |
+    'START'|'BACK'|'GUIDE' |
+    'STICK_LEFT'|'STICK_RIGHT' |
+    'BUMPER_LEFT'|'BUMPER_RIGHT' |
+    'TRIGGER_LEFT'|'TRIGGER_RIGHT'
+;
+export type GamepadUnnamedButtons = `BUTTON_${number}`;
+
+export type GamepadButtons = GamepadUnnamedButtons | GamepadMappedButtons;
+
+
+export type GamepadMappedAxes = 
+    'STICK_LEFT_X'|'STICK_LEFT_Y' |
+    'STICK_RIGHT_X'|'STICK_RIGHT_Y'
+;
+export type GamepadUnnamedAxes = `AXIS_${number}`;
+
+export type GamepadAxes = GamepadUnnamedAxes | GamepadMappedAxes;
 
 
 const llgpee = new EventEmitter<{
@@ -95,15 +114,20 @@ export class Gamepad extends EventEmitter<{
     private _index: number = null;
     private usedGamepadsIndexes?: Set<number>;
 
-    constructor({
-        index = null,
-        autoUpdate = true,
-        usedGamepadsIndexes = globalUsedGamepadsIndexes,
-    }: {
-        index?: number;
-        autoUpdate?: boolean;
-        usedGamepadsIndexes?: Set<number>;
-    }) {
+    private _isTargetInFocus = true;
+
+    constructor(
+        private target: HTMLElement = document.body,
+        {
+            index = null,
+            autoUpdate = true,
+            usedGamepadsIndexes = globalUsedGamepadsIndexes,
+        }: {
+            index?: number;
+            autoUpdate?: boolean;
+            usedGamepadsIndexes?: Set<number>;
+        }
+    ) {
         super();
 
         this.index = index;
@@ -120,13 +144,60 @@ export class Gamepad extends EventEmitter<{
             }
         });
 
+        // TODO
+        target.addEventListener('focus', (event) => {
+            this._isTargetInFocus = true;
+            console.log(event);
+        });
+
+        target.addEventListener('focusin', (event) => {
+            this._isTargetInFocus = true;
+            console.log(event);
+        });
+
+        target.addEventListener('focusout', (event) => {
+            this._isTargetInFocus = false;
+            console.log(event);
+        });
+
+        this.store.bindKeys({
+            'BUTTON_0': 'A',
+            'BUTTON_1': 'B',
+            'BUTTON_2': 'X',
+            'BUTTON_3': 'Y',
+            'BUTTON_4': 'BUMPER_LEFT',
+            'BUTTON_5': 'BUMPER_RIGHT',
+            'BUTTON_6': 'TRIGGER_LEFT',
+            'BUTTON_7': 'TRIGGER_RIGHT',
+            'BUTTON_8': 'BACK',
+            'BUTTON_9': 'START',
+            'BUTTON_10': 'STICK_LEFT',
+            'BUTTON_11': 'STICK_RIGHT',
+            'BUTTON_12': 'UP',
+            'BUTTON_13': 'DOWN',
+            'BUTTON_14': 'LEFT',
+            'BUTTON_15': 'RIGHT',
+            'BUTTON_16': 'GUIDE',
+        });
+
+        this.store.bindAxes({
+            'AXIS_0': 'STICK_LEFT_X',
+            'AXIS_1': 'STICK_LEFT_Y',
+            'AXIS_2': 'STICK_RIGHT_X',
+            'AXIS_3': 'STICK_RIGHT_Y',
+        });
+
         this.tryInit();
+    }
+
+    get isTargetInFocus() {
+        return document.hasFocus() && this._isTargetInFocus;
     }
 
     get index() {
         return this._index;
     }
-    set index(value) {
+    private set index(value) {
         if (this._index === value) {
             return;
         }
@@ -135,18 +206,18 @@ export class Gamepad extends EventEmitter<{
             throw new Error(`Bad index value "${value}"`);
         }
 
-        if (this?.usedGamepadsIndexes.has(value)) {
+        if (this.usedGamepadsIndexes?.has(value)) {
             throw new Error(`Index "${value}" already used`);
         }
 
         if (typeof this._index === 'number') {
-            this?.usedGamepadsIndexes.delete(this._index);
+            this.usedGamepadsIndexes?.delete(this._index);
         }
 
         this._index = value;
 
         if (this._index !== null) {
-            this.usedGamepadsIndexes.add(this._index);
+            this.usedGamepadsIndexes?.add(this._index);
         }
     }
 
@@ -178,6 +249,10 @@ export class Gamepad extends EventEmitter<{
         return this.connected && !!this.vibrationActuator;
     }
 
+    get name() {
+        return this.llgp?.id;
+    }
+
     getLlgp() {
         return Gamepad.getLlgps()[this.index];
     }
@@ -198,7 +273,7 @@ export class Gamepad extends EventEmitter<{
         }
 
         for (const llgp of llgps.filter(llgp => llgp)) {
-            if (!this?.usedGamepadsIndexes?.has(llgp.index)) {
+            if (!this.usedGamepadsIndexes?.has(llgp.index)) {
                 this.index = llgp.index;
                 this.connected = true;
             }
@@ -208,14 +283,19 @@ export class Gamepad extends EventEmitter<{
     readonly update = (llgp = this.getLlgp()) => {
         this.llgp = llgp;
 
+        if (!this.connected || !this.isTargetInFocus) {
+            return;
+        }
+
         for (const [i, value] of this.llgp.axes.entries()) {
-            this.store.updateAxis(`AXIS_${i}`, value);
+            this.store.updateAxis(`AXIS_${i}`, value, this);
         }
 
         for (const [i, value] of this.llgp.buttons.entries()) {
             this.store.updateKey(
                 `BUTTON_${i}`,
                 typeof value === 'number' ? value : value.value || Number(value.pressed),
+                this,
             );
         }
     };
