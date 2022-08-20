@@ -4,7 +4,7 @@
   "description": "Gamepad Keyboard Mouse package",
   "main": "build/index.js",
   "scripts": {
-    "prepack": "tsc --project tsconfig.json"
+    "postinstall": "tsc --project tsconfig.json"
   },
   "repository": {
     "type": "git",
