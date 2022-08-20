@@ -1,12 +1,12 @@
 import { Store } from "../helpers/Store";
 
-enum MouseButtons {
+export enum MouseButtons {
     Left = 'Left',
     Middle = 'Middle',
     Right = 'Right',
 }
 
-enum MouseAxes {
+export enum MouseAxes {
     clientX = 'clientX',
     clientY = 'clientY',
     offsetX = 'offsetX',

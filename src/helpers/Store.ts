@@ -1,8 +1,9 @@
-import EventEmitter from 'eventemitter3';
+import EventEmitter from "eventemitter3";
 
-enum EVENTS {
+export enum StoreEvents {
     keydown = 'keydown',
     keyup = 'keyup',
+    keyvaluechange = 'keyvaluechange',
     click = 'click',
 
     axismove = 'axismove',
@@ -15,19 +16,22 @@ export class Store<
     Keys extends string | number,
     Axes extends string | number = null,
 > extends EventEmitter<{
-    [EVENTS.keydown]: (key: Keys) => void,
-    [EVENTS.keyup]: (key: Keys) => void,
-    [EVENTS.click]: (key: Keys) => void,
+    [StoreEvents.keydown]: (key: Keys, value: number) => void,
+    [StoreEvents.keyup]: (key: Keys, value: number) => void,
+    [StoreEvents.keyvaluechange]: (key: Keys, value: number) => void,
+    [StoreEvents.click]: (key: Keys, value: number) => void,
 
-    [EVENTS.axismove]: (axis: Axes, value: number) => void,
+    [StoreEvents.axismove]: (axis: Axes, value: number) => void,
 }> {
+    static readonly events = StoreEvents;
+
+    readonly events = StoreEvents;
+
     protected axes = new Map<Axes, number>();
     protected keys = new Map<Keys, number>();
     protected axesMultipliers = new Map<Axes, number>();
     protected keysMultipliers = new Map<Keys, number>();
     protected keysDownTime = new Map<Keys, number>();
-
-    readonly events = EVENTS;
 
 
     constructor(keysList?: Keys[], axesList?: Axes[]) {
@@ -49,15 +53,17 @@ export class Store<
         if (lastValue !== value) {
             this.keys.set(key, value);
 
-            if (lastValue === 0) {
-                this.emit(EVENTS.keyup, key);
+            this.emit(StoreEvents.keyvaluechange, key, value);
+
+            if (value === 0) {
+                this.emit(StoreEvents.keyup, key, value);
 
                 if (Date.now() - (this.keysDownTime.get(key) || 0) < clickMaxTime) {
-                    this.emit(EVENTS.click, key);
+                    this.emit(StoreEvents.click, key, value);
                 }
-            } else {
+            } else if (value === 1) {
                 this.keysDownTime.set(key, Date.now());
-                this.emit(EVENTS.keydown, key);
+                this.emit(StoreEvents.keydown, key, value);
             }
         }
     }
@@ -65,8 +71,10 @@ export class Store<
     private _updateAxis(key: Axes, value = 0) {
         value *= this.axesMultipliers.get(key) ?? 1;
 
-        this.axes.set(key, value);
-        this.emit(EVENTS.axismove, key, value);
+        if (this.axes.get(key) !== 0 || value !== 0) {
+            this.axes.set(key, value);
+            this.emit(StoreEvents.axismove, key, value);
+        }
     }
 
 
@@ -120,4 +128,4 @@ export class Store<
 
 const store = new Store<'a' | 'b', 'c'>();
 
-store.addListener(EVENTS.click, (key) => console.log(key));
+store.addListener(StoreEvents.click, (key) => console.log(key));
