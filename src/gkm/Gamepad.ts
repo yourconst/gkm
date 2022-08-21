@@ -1,4 +1,5 @@
 import EventEmitter from "eventemitter3";
+import { Focusing } from "../helpers/Focusing";
 import { Store } from "../helpers/Store";
 
 
@@ -41,52 +42,96 @@ export interface GamepadVibrateOptions {
 }
 
 
-export enum GamepadEvents {
-    connected = 'connected',
-    disconnected = 'disconnected',
-}
+export type GamepadEvents = 'connected' | 'disconnected';
 
 
-export type GamepadMappedButtons = 
+export type GamepadMappedButtons = `GAMEPAD_${
     'A'|'X'|'Y'|'B' |
     'DOWN'|'LEFT'|'UP'|'RIGHT' |
     'START'|'BACK'|'GUIDE' |
     'STICK_LEFT'|'STICK_RIGHT' |
     'BUMPER_LEFT'|'BUMPER_RIGHT' |
     'TRIGGER_LEFT'|'TRIGGER_RIGHT'
-;
+}`;
 export type GamepadUnnamedButtons = `BUTTON_${number}`;
 
 export type GamepadButtons = GamepadUnnamedButtons | GamepadMappedButtons;
 
 
-export type GamepadMappedAxes = 
+export type GamepadMappedAxes = `GAMEPAD_${
     'STICK_LEFT_X'|'STICK_LEFT_Y' |
     'STICK_RIGHT_X'|'STICK_RIGHT_Y'
-;
-export type GamepadUnnamedAxes = `AXIS_${number}`;
+}`;
+export type GamepadUnnamedAxes = `GAMEPAD_AXIS_${number}`;
 
 export type GamepadAxes = GamepadUnnamedAxes | GamepadMappedAxes;
 
 
 const llgpee = new EventEmitter<{
-    [GamepadEvents.connected]: (gamepad: LowLevelGamepad) => void,
-    [GamepadEvents.disconnected]: (gamepad: LowLevelGamepad) => void,
+    'connected': (gamepad: LowLevelGamepad) => void,
+    'disconnected': (gamepad: LowLevelGamepad) => void,
 }>();
 
 window.addEventListener('gamepadconnected', ({ gamepad }) => {
-    llgpee.emit(GamepadEvents.connected, <any> gamepad);
+    llgpee.emit('connected', <any> gamepad);
 });
 
 window.addEventListener('gamepaddisconnected', ({ gamepad }) => {
-    llgpee.emit(GamepadEvents.disconnected, <any> gamepad);
+    llgpee.emit('disconnected', <any> gamepad);
 });
 
 const globalUsedGamepadsIndexes = new Set<number>();
 
-export class Gamepad extends EventEmitter<{
-    [GamepadEvents.connected]: (gamepad: Gamepad) => void,
-    [GamepadEvents.disconnected]: (gamepad: Gamepad) => void,
+const standardButtonsMapping = new Map<number, GamepadMappedButtons>([
+    [0, 'GAMEPAD_A'],
+    [1, 'GAMEPAD_B'],
+    [2, 'GAMEPAD_X'],
+    [3, 'GAMEPAD_Y'],
+    [4, 'GAMEPAD_BUMPER_LEFT'],
+    [5, 'GAMEPAD_BUMPER_RIGHT'],
+    [6, 'GAMEPAD_TRIGGER_LEFT'],
+    [7, 'GAMEPAD_TRIGGER_RIGHT'],
+    [8, 'GAMEPAD_BACK'],
+    [9, 'GAMEPAD_START'],
+    [10, 'GAMEPAD_STICK_LEFT'],
+    [11, 'GAMEPAD_STICK_RIGHT'],
+    [12, 'GAMEPAD_UP'],
+    [13, 'GAMEPAD_DOWN'],
+    [14, 'GAMEPAD_LEFT'],
+    [15, 'GAMEPAD_RIGHT'],
+    [16, 'GAMEPAD_GUIDE'],
+]);
+
+const standardAxesMapping = new Map<number, GamepadMappedAxes>([
+    [0, 'GAMEPAD_STICK_LEFT_X'],
+    [1, 'GAMEPAD_STICK_LEFT_Y'],
+    [2, 'GAMEPAD_STICK_RIGHT_X'],
+    [3, 'GAMEPAD_STICK_RIGHT_Y'],
+]);
+
+export interface KeysAxesMapping<Keys, Axes> {
+    buttons: Map<number, Keys>;
+    axes: Map<number, Axes>;
+}
+
+function getAutoMappings(gamepad: LowLevelGamepad): KeysAxesMapping<GamepadButtons, GamepadAxes> {
+    if (gamepad.mapping === 'standard') {
+        return {
+            buttons: standardButtonsMapping,
+            axes: standardAxesMapping,
+        };
+    }
+
+    return {
+        buttons: new Map(gamepad.buttons.map((_,i) => ([i, `BUTTON_${i}`]))),
+        axes: new Map(gamepad.axes.map((_,i) => ([i, `GAMEPAD_AXIS_${i}`]))),
+    }
+}
+
+export class Gamepad<Keys extends string = GamepadButtons, Axes extends string = GamepadAxes>
+extends Store<Keys, Axes, Gamepad<Keys, Axes>, {
+    ['connected']: (gamepad: Gamepad) => void,
+    ['disconnected']: (gamepad: Gamepad) => void,
 }> {
     static readonly addListener: typeof llgpee['addListener'] =
         (event, listener) => llgpee.addListener(event, listener);
@@ -103,16 +148,16 @@ export class Gamepad extends EventEmitter<{
         return this.getLlgps().filter(llgp => llgp);
     }
 
-    static readonly events = GamepadEvents;
-
-    readonly events = GamepadEvents;
-
-    readonly store = new Store<GamepadButtons, GamepadAxes>();    
     private llgp?: LowLevelGamepad;
     private autoUpdate = true;
     private _connected = false;
     private _index: number = null;
     private usedGamepadsIndexes?: Set<number>;
+
+    private buttonsMapping: Map<number, Keys>;
+    private axesMapping: Map<number, Axes>;
+
+    private getMappings: (gamepad: LowLevelGamepad) => KeysAxesMapping<Keys, Axes>;
 
     private _isTargetInFocus = true;
 
@@ -122,10 +167,13 @@ export class Gamepad extends EventEmitter<{
             index = null,
             autoUpdate = true,
             usedGamepadsIndexes = globalUsedGamepadsIndexes,
+            // @ts-ignore
+            getMappings = getAutoMappings,
         }: {
             index?: number;
             autoUpdate?: boolean;
             usedGamepadsIndexes?: Set<number>;
+            getMappings?: (gamepad: LowLevelGamepad) => KeysAxesMapping<Keys, Axes>,
         }
     ) {
         super();
@@ -133,58 +181,24 @@ export class Gamepad extends EventEmitter<{
         this.index = index;
         this.autoUpdate = autoUpdate;
         this.usedGamepadsIndexes = usedGamepadsIndexes;
+        this.getMappings = getMappings;
 
-        Gamepad.addListener(GamepadEvents.connected, () => {
+        Gamepad.addListener('connected', () => {
             this.tryInit();
         });
 
-        Gamepad.addListener(GamepadEvents.disconnected, (gamepad) => {
+        Gamepad.addListener('disconnected', (gamepad) => {
             if (gamepad.index === this.index) {
                 this.connected = false;
             }
         });
 
-        // TODO
-        target.addEventListener('focus', (event) => {
+        Focusing.addListener(this.target, 'focus', () => {
             this._isTargetInFocus = true;
-            console.log(event);
         });
-
-        target.addEventListener('focusin', (event) => {
-            this._isTargetInFocus = true;
-            console.log(event);
-        });
-
-        target.addEventListener('focusout', (event) => {
+        Focusing.addListener(this.target, 'blur', () => {
+            this.reset(this);
             this._isTargetInFocus = false;
-            console.log(event);
-        });
-
-        this.store.bindKeys({
-            'BUTTON_0': 'A',
-            'BUTTON_1': 'B',
-            'BUTTON_2': 'X',
-            'BUTTON_3': 'Y',
-            'BUTTON_4': 'BUMPER_LEFT',
-            'BUTTON_5': 'BUMPER_RIGHT',
-            'BUTTON_6': 'TRIGGER_LEFT',
-            'BUTTON_7': 'TRIGGER_RIGHT',
-            'BUTTON_8': 'BACK',
-            'BUTTON_9': 'START',
-            'BUTTON_10': 'STICK_LEFT',
-            'BUTTON_11': 'STICK_RIGHT',
-            'BUTTON_12': 'UP',
-            'BUTTON_13': 'DOWN',
-            'BUTTON_14': 'LEFT',
-            'BUTTON_15': 'RIGHT',
-            'BUTTON_16': 'GUIDE',
-        });
-
-        this.store.bindAxes({
-            'AXIS_0': 'STICK_LEFT_X',
-            'AXIS_1': 'STICK_LEFT_Y',
-            'AXIS_2': 'STICK_RIGHT_X',
-            'AXIS_3': 'STICK_RIGHT_Y',
         });
 
         this.tryInit();
@@ -234,9 +248,15 @@ export class Gamepad extends EventEmitter<{
         this._connected = value;
 
         if (value) {
-            this.emit(GamepadEvents.connected, this);
+            this.llgp = this.getLlgp();
+            const { buttons, axes } = this.getMappings(this.llgp);
+            this.buttonsMapping = buttons;
+            this.axesMapping = axes;
+            // @ts-ignore
+            this.emit('connected', this);
         } else {
-            this.emit(GamepadEvents.disconnected, this);
+            // @ts-ignore
+            this.emit('disconnected', this);
             this.tryInit();
         }
     }
@@ -288,12 +308,12 @@ export class Gamepad extends EventEmitter<{
         }
 
         for (const [i, value] of this.llgp.axes.entries()) {
-            this.store.updateAxis(`AXIS_${i}`, value, this);
+            this.updateAxis(this.axesMapping.get(i), value, this);
         }
 
         for (const [i, value] of this.llgp.buttons.entries()) {
-            this.store.updateKey(
-                `BUTTON_${i}`,
+            this.updateKey(
+                this.buttonsMapping.get(i),
                 typeof value === 'number' ? value : value.value || Number(value.pressed),
                 this,
             );

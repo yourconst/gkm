@@ -1,33 +1,38 @@
 import EventEmitter from "eventemitter3";
 import { Awaiter } from "./Awaiter";
 
-export enum StoreEvents {
-    keydown = 'keydown',
-    keyup = 'keyup',
-    keyvaluechange = 'keyvaluechange',
-    click = 'click',
-
-    axismove = 'axismove',
-}
+export type StoreEvents = 'keydown'|'keyup'|'keyvaluechange'|'click'|'axismove';
 
 const clickMaxTime = 100;
 const dblclickMaxTime = 300;
+
+export interface BinNextKeyInfo<Keys, Source> {
+    key: Keys;
+    value: number;
+    source?: Source;
+}
+
+export interface BinNextAxisInfo<Axes, Source> {
+    axis: Axes;
+    value: number;
+    source?: Source;
+}
 
 export class Store<
     Keys extends string,
     Axes extends string = null,
     Source = any,
+    EventTypes extends {[key: string]: Function} = {}
 > extends EventEmitter<{
-    [StoreEvents.keydown]: (key: Keys, value: number, source?: Source) => void,
-    [StoreEvents.keyup]: (key: Keys, value: number, source?: Source) => void,
-    [StoreEvents.keyvaluechange]: (key: Keys, value: number, source?: Source) => void,
-    [StoreEvents.click]: (key: Keys, value: number, source?: Source) => void,
+    'keydown': (key: Keys, value: number, source?: Source) => void,
+    'keyup': (key: Keys, value: number, source?: Source) => void,
+    'keyvaluechange': (key: Keys, value: number, source?: Source) => void,
+    'click': (key: Keys, value: number, source?: Source) => void,
 
-    [StoreEvents.axismove]: (axis: Axes, value: number, source?: Source) => void,
+    'axismove': (axis: Axes, value: number, source?: Source) => void,
+} & {
+    [key in keyof EventTypes]: EventTypes[key];
 }> {
-    static readonly events = StoreEvents;
-
-    readonly events = StoreEvents;
 
     protected axes = new Map<Axes, number>();
     protected keys = new Map<Keys, number>();
@@ -38,8 +43,8 @@ export class Store<
     protected keysBindings = new Map<Keys, Set<Keys>>();
     protected axesBindings = new Map<Axes, Set<Axes>>();
 
-    protected nextKeyBindAwaiter = new Awaiter<Keys>();
-    protected nextAxisBindAwaiter = new Awaiter<Axes>();
+    protected nextKeyBindAwaiter = new Awaiter<BinNextKeyInfo<Keys, Source>>();
+    protected nextAxisBindAwaiter = new Awaiter<BinNextAxisInfo<Axes, Source>>();
 
 
     constructor(keysList?: Keys[], axesList?: Axes[]) {
@@ -52,11 +57,24 @@ export class Store<
         this.keysDownTime.clear();
     }
 
+    reset(source?: Source) {
+        this.keysDownTime.clear();
+
+        for (const key of this.keys.keys()) {
+            this.updateKey(key, 0, source);
+        }
+
+        for (const axis of this.axes.keys()) {
+            this.updateAxis(axis, 0, source);
+        }
+    }
+
 
     private emitKeyEvent(
-        event: StoreEvents.keydown | StoreEvents.keyup | StoreEvents.keyvaluechange | StoreEvents.click,
+        event: 'keydown' | 'keyup' | 'keyvaluechange' | 'click',
         key: Keys, value: number, source?: Source,
     ) {
+        // @ts-ignore
         this.emit(event, key, value, source);
 
         const s = this.keysBindings.get(key);
@@ -66,6 +84,7 @@ export class Store<
         }
 
         for (const bkey of s) {
+            this.keys.set(bkey, value);
             this.emitKeyEvent(event, bkey, value, source);
         }
     }
@@ -81,24 +100,25 @@ export class Store<
             const needEmit = lastValue !== undefined || value !== 0;
 
             if (value === 0) {
-                needEmit && this.emitKeyEvent(StoreEvents.keyup, key, value, source);
+                needEmit && this.emitKeyEvent('keyup', key, value, source);
 
                 if (Date.now() - (this.keysDownTime.get(key) || 0) < clickMaxTime) {
-                    needEmit && this.emitKeyEvent(StoreEvents.click, key, value, source);
+                    needEmit && this.emitKeyEvent('click', key, value, source);
                 }
             } else if (!lastValue) {
                 if (this.nextKeyBindAwaiter.active) {
-                    this.nextKeyBindAwaiter.resolve(key);
+                    this.nextKeyBindAwaiter.resolve({key, value, source});
                 }
                 this.keysDownTime.set(key, Date.now());
-                needEmit && this.emitKeyEvent(StoreEvents.keydown, key, value, source);
+                needEmit && this.emitKeyEvent('keydown', key, value, source);
             }
 
-            needEmit && this.emitKeyEvent(StoreEvents.keyvaluechange, key, value, source);
+            needEmit && this.emitKeyEvent('keyvaluechange', key, value, source);
         }
     }
 
-    private emitAxisEvent(event: StoreEvents.axismove, axis: Axes, value: number, source?: Source) {
+    private emitAxisEvent(event: 'axismove', axis: Axes, value: number, source?: Source) {
+        // @ts-ignore
         this.emit(event, axis, value, source);
 
         const s = this.axesBindings.get(axis);
@@ -108,6 +128,7 @@ export class Store<
         }
 
         for (const baxis of s) {
+            this.axes.set(baxis, value);
             this.emitAxisEvent(event, baxis, value, source);
         }
     }
@@ -124,12 +145,12 @@ export class Store<
         if (lastValue !== 0 || value !== 0) {
             this.axes.set(axis, value);
 
-            if (lastValue !== undefined && value !== 0) {
+            if (lastValue !== undefined || value !== 0) {
                 if (this.nextAxisBindAwaiter.active) {
-                    this.nextAxisBindAwaiter.resolve(axis);
+                    this.nextAxisBindAwaiter.resolve({axis, value, source});
                 }
 
-                this.emitAxisEvent(StoreEvents.axismove, axis, value, source);
+                this.emitAxisEvent('axismove', axis, value, source);
             }
         }
     }
@@ -154,86 +175,126 @@ export class Store<
     }
 
 
-    // @ts-ignore
-    setKeysMultipliers(map: Record<Keys, number>) {
+    setKeysMultipliers(map: Partial<Record<Keys, number>>) {
         for (const [key, value] of Object.entries(map)) {
             this.keysMultipliers.set(<Keys> key, <number> value);
         }
     }
 
-    // @ts-ignore
-    setAxesMultipliers(map: Record<Axes, number>) {
+    setAxesMultipliers(map: Partial<Record<Axes, number>>) {
         for (const [key, value] of Object.entries(map)) {
             this.axesMultipliers.set(<Axes> key, <number> value);
         }
     }
 
 
-    bindKey(source: Keys, target: Keys) {
-        if (source === target) {
-            throw new Error(`Source and Target keys are equals ("${source}")`);
+    bindKey(sourceKey: Keys, targetKey: Keys, source?: Source) {
+        if (sourceKey === targetKey) {
+            throw new Error(`Source and Target keys is equals ("${sourceKey}")`);
         }
 
-        let s = this.keysBindings.get(source);
+        let s = this.keysBindings.get(sourceKey);
 
         if (!s) {
             s = new Set();
-            this.keysBindings.set(source, s);
+            this.keysBindings.set(sourceKey, s);
         }
 
-        s.add(target);
+        s.add(targetKey);
+        this.updateKey(targetKey, this.getKeyValue(sourceKey), source);
     }
 
-    bindKeys(map: Partial<Record<Keys, Keys>>) {
-        for (const [source, target] of Object.entries(map)) {
-            this.bindKey(<any> source, <any> target);
+    bindKeys(map: Partial<Record<Keys, Keys>>, source?: Source) {
+        for (const [sourceKey, targetKey] of Object.entries(map)) {
+            this.bindKey(<any> sourceKey, <any> targetKey, source);
         }
     }
 
-    unbindKey(source: Keys, target: Keys) {
-        this.keysBindings.get(source)?.delete(target);
+    unbindKey(sourceKey: Keys, targetKey: Keys, source?: Source) {
+        this.keysBindings.get(sourceKey)?.delete(targetKey);
+        this.updateKey(targetKey, 0, source);
     }
 
-    async bindNextKey(target: Keys) {
-        const source = await this.nextKeyBindAwaiter.wait();
+    async bindNextKey(
+        targetKey: Keys,
+        {
+            validate = () => true,
+            cancel = () => false,
+            source,
+        }: {
+            validate?: (info: BinNextKeyInfo<Keys, Source>) => boolean;
+            cancel?: (info: BinNextKeyInfo<Keys, Source>) => boolean;
+            source?: Source;
+        } = {},
+    ) {
+        let info: BinNextKeyInfo<Keys, Source>;
 
-        this.bindKey(source, target);
+        do {
+            info = await this.nextKeyBindAwaiter.wait();
 
-        return source;
+            if (cancel(info)) {
+                return null;
+            }
+        } while (info.key === targetKey || !validate(info));
+
+        this.bindKey(info.key, targetKey, source);
+
+        return info;
     }
 
 
-    bindAxis(source: Axes, target: Axes) {
-        if (source === target) {
-            throw new Error(`Source and Target axes are equals ("${source}")`);
+    bindAxis(sourceAxis: Axes, targetAxis: Axes, source?: Source) {
+        if (sourceAxis === targetAxis) {
+            throw new Error(`Source and Target axes is equals ("${sourceAxis}")`);
         }
 
-        let s = this.axesBindings.get(source);
+        let s = this.axesBindings.get(sourceAxis);
 
         if (!s) {
             s = new Set();
-            this.axesBindings.set(source, s);
+            this.axesBindings.set(sourceAxis, s);
         }
 
-        s.add(target);
+        s.add(targetAxis);
+        this.updateAxis(targetAxis, this.getAxisValue(sourceAxis), source);
     }
 
-    bindAxes(map: Partial<Record<Axes, Axes>>) {
-        for (const [source, target] of Object.entries(map)) {
-            this.bindAxis(<any> source, <any> target);
+    bindAxes(map: Partial<Record<Axes, Axes>>, source?: Source) {
+        for (const [sourceAxis, targetAxis] of Object.entries(map)) {
+            this.bindAxis(<any> sourceAxis, <any> targetAxis, source);
         }
     }
 
-    unbindAxis(source: Axes, target: Axes) {
-        this.axesBindings.get(source)?.delete(target);
+    unbindAxis(sourceAxis: Axes, targetAxis: Axes, source?: Source) {
+        this.axesBindings.get(sourceAxis)?.delete(targetAxis);
+        this.updateAxis(targetAxis, 0, source);
     }
 
-    async bindNextAxis(target: Axes) {
-        const source = await this.nextAxisBindAwaiter.wait();
+    async bindNextAxis(
+        target: Axes,
+        {
+            validate = () => true,
+            cancel = () => false,
+            source,
+        }: {
+            validate?: (info: BinNextAxisInfo<Axes, Source>) => boolean;
+            cancel?: (info: BinNextAxisInfo<Axes, Source>) => boolean;
+            source?: Source;
+        } = {},
+    ) {
+        let info: BinNextAxisInfo<Axes, Source>;
 
-        this.bindAxis(source, target);
+        do {
+            info = await this.nextAxisBindAwaiter.wait();
 
-        return source;
+            if (cancel(info)) {
+                return null;
+            }
+        } while (info.axis === target || !validate(info));
+
+        this.bindAxis(info.axis, target, source);
+
+        return info;
     }
 
 
@@ -249,8 +310,3 @@ export class Store<
         return this.axes.get(axis) || 0;
     }
 }
-
-
-const store = new Store<'a' | 'b', 'c'>();
-
-store.addListener(StoreEvents.click, (key) => console.log(key));

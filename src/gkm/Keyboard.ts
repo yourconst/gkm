@@ -1,3 +1,4 @@
+import { Focusing } from "../helpers/Focusing";
 import { Store } from "../helpers/Store";
 
 export type KeyboardButtons =
@@ -12,28 +13,27 @@ export type KeyboardButtons =
     'Insert' | 'Home' | 'PageUp' | 'PageDown' | 'End' | 'Delete' |
     'ScrollLock' | 'Pause' |
     'Comma' | 'Period' | 'Slash' | 'Semicolon' | 'Quote' | 'BracketLeft' | 'BracketRight' | 'Minus' | 'Equal'
-    ;
+;
 
-export class Keyboard {
-    readonly store = new Store<KeyboardButtons, null, Keyboard>();
-
+export class Keyboard extends Store<KeyboardButtons, null, Keyboard> {
     constructor(protected target: HTMLElement = document.body, public needPreventDefault = false) {
-        target.addEventListener('keydown', (event) => {
+        super();
+
+        this.target.addEventListener('keydown', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
-            this.store.keydown(<KeyboardButtons> event.code, this);
+            this.keydown(<KeyboardButtons> event.code, this);
         });
-        target.addEventListener('keyup', (event) => {
+        this.target.addEventListener('keyup', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
-            this.store.keyup(<KeyboardButtons> event.code, this);
+            this.keyup(<KeyboardButtons> event.code, this);
         });
 
-        // TODO
-        target.addEventListener('focusout', () => {
-            this.store.clear();
+        Focusing.addListener(this.target, 'blur', () => {
+            this.reset(this);
         });
     }
 

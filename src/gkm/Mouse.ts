@@ -1,79 +1,82 @@
+import { Focusing } from "../helpers/Focusing";
 import { Store } from "../helpers/Store";
 
-export enum MouseButtons {
-    MOUSE_LEFT = 'MOUSE_LEFT',
-    MOUSE_MIDDLE = 'MOUSE_MIDDLE',
-    MOUSE_RIGHT = 'MOUSE_RIGHT',
-}
+export type MouseButtons = `MOUSE_${'LEFT'|'WHEEL'|'RIGHT'}`;
 
-export enum MouseAxes {
-    clientX = 'clientX',
-    clientY = 'clientY',
-    offsetX = 'offsetX',
-    offsetY = 'offsetY',
-    pageX = 'pageX',
-    pageY = 'pageY',
-    screenX = 'screenX',
-    screenY = 'screenY',
-    movementX = 'movementX',
-    movementY = 'movementY',
-    x = 'x',
-    y = 'y',
-}
+export type MouseAxes = `MOUSE_${
+    'X'|'Y'|'MOVEMENT_X'|'MOVEMENT_Y'|
+    'CLIENT_X'|'CLIENT_Y'|'OFFSET_X'|'OFFSET_Y'|
+    'PAGE_X'|'PAGE_Y'|'SCREEN_X'|'SCREEN_Y'|
+    'WHEEL_X'|'WHEEL_Y'|'WHEEL_Z'
+}`;
 
+const axisMap = new Map<MouseAxes, keyof MouseEvent>([
+    ['MOUSE_X', 'x'],['MOUSE_Y', 'y'],['MOUSE_MOVEMENT_X', 'movementX'],['MOUSE_MOVEMENT_Y', 'movementY'],
+    ['MOUSE_CLIENT_X', 'clientX'],['MOUSE_CLIENT_Y', 'clientY'],
+    ['MOUSE_OFFSET_X', 'offsetX'],['MOUSE_OFFSET_Y', 'offsetY'],
+    ['MOUSE_PAGE_X', 'pageX'],['MOUSE_PAGE_Y', 'pageY'],
+    ['MOUSE_SCREEN_X', 'screenX'],['MOUSE_SCREEN_Y', 'screenY'],
+]);
 
-export class Mouse {
-    readonly buttons = MouseButtons;
-    readonly axes = MouseAxes;
-
-    readonly store = new Store<MouseButtons, MouseAxes, Mouse>();
+export class Mouse extends Store<MouseButtons, MouseAxes, Mouse> {
 
     constructor(protected target: HTMLElement = document.body, public needPreventDefault = false) {
-        target.addEventListener('mousemove', (event) => {
+        super();
+
+        this.target.addEventListener('mousemove', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
 
-            for (const axis of Object.values(MouseAxes)) {
-                this.store.updateAxis(axis, event[axis], this);
+            for (const [axis, prop] of axisMap.entries()) {
+                const value: number = <any> event[prop];
+
+                if (value !== undefined) {
+                    this.updateAxis(axis, value, this);
+                }
             }
         });
 
-        target.addEventListener('mousedown', (event) => {
+        this.target.addEventListener('wheel', (event) => {
+            this.updateAxis('MOUSE_WHEEL_X', event.deltaX, this);
+            this.updateAxis('MOUSE_WHEEL_Y', event.deltaY, this);
+            this.updateAxis('MOUSE_WHEEL_Z', event.deltaZ, this);
+        });
+
+        this.target.addEventListener('mousedown', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
 
             if (event.button === 0) {
-                this.store.keydown(MouseButtons.MOUSE_LEFT, this);
+                this.keydown('MOUSE_LEFT', this);
             } else
             if (event.button === 1) {
-                this.store.keydown(MouseButtons.MOUSE_MIDDLE, this);
+                this.keydown('MOUSE_WHEEL', this);
             } else
             if (event.button === 2) {
-                this.store.keydown(MouseButtons.MOUSE_RIGHT, this);
+                this.keydown('MOUSE_RIGHT', this);
             }
         });
 
-        target.addEventListener('mouseup', (event) => {
+        this.target.addEventListener('mouseup', (event) => {
             if (this.needPreventDefault) {
                 event.preventDefault();
             }
 
             if (event.button === 0) {
-                this.store.keyup(MouseButtons.MOUSE_LEFT, this);
+                this.keyup('MOUSE_LEFT', this);
             } else
             if (event.button === 1) {
-                this.store.keyup(MouseButtons.MOUSE_MIDDLE, this);
+                this.keyup('MOUSE_WHEEL', this);
             } else
             if (event.button === 2) {
-                this.store.keyup(MouseButtons.MOUSE_RIGHT, this);
+                this.keyup('MOUSE_RIGHT', this);
             }
         });
 
-        // TODO
-        target.addEventListener('focusout', () => {
-            this.store.clear();
+        Focusing.addListener(this.target, 'blur', () => {
+            this.reset(this);
         });
     }
 
